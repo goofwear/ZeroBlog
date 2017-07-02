@@ -14,9 +14,9 @@ class ZeroBlog extends ZeroFrame
 			if @site_info.settings.own or @data.demo
 				@addInlineEditors()
 				@checkPublishbar()
-				$(".publishbar").on "click", @publish
+				$(".publishbar").off("click").on "click", @publish
 				$(".posts .button.new").css("display", "inline-block")
-				$(".editbar .icon-help").on "click", =>
+				$(".editbar .icon-help").off("click").on "click", =>
 					$(".editbar .markdown-help").css("display", "block")
 					$(".editbar .markdown-help").toggleClassLater("visible", 10)
 					$(".editbar .icon-help").toggleClass("active")
@@ -47,7 +47,7 @@ class ZeroBlog extends ZeroFrame
 			username = Page.site_info.cert_user_id.replace /@.*/, ""
 			@follow.addFeed("Username mentions", "
 				SELECT
-				'comment' AS type,
+				'mention' AS type,
 				 date_added,
 				 post.title AS title,
 				 keyvalue.value || ': ' || comment.body AS body,
@@ -87,9 +87,11 @@ class ZeroBlog extends ZeroFrame
 			if res
 				for row in res
 					@data[row.key] = row.value
-				$(".left h1 a:not(.editable-edit)").html(@data.title).data("content", @data.title)
-				$(".left h2").html(Text.renderMarked(@data.description)).data("content", @data.description)
-				$(".left .links").html(Text.renderMarked(@data.links)).data("content", @data.links)
+
+				if @data.title then $(".left h1 a:not(.editable-edit)").html(@data.title).data("content", @data.title)
+				if @data.description then $(".left h2").html(Text.renderMarked(@data.description)).data("content", @data.description)
+				if @data.links then $(".left .links").html(Text.renderMarked(@data.links)).data("content", @data.links)
+				if @data.footer then $(".footer h4").html(Text.renderMarked(@data.footer)).data("content", @data.footer)
 
 	loadLastcomments: (type="show", cb=false) ->
 		query = "
@@ -158,10 +160,13 @@ class ZeroBlog extends ZeroFrame
 				if res.length
 					post = res[0]
 					@applyPostdata($(".post-full"), post, true)
-					$(".post-full .like").attr("id", "post_like_#{post.post_id}").on "click", @submitPostVote
+					$(".post-full").css("display", "block")
+					$(".post-full .like").attr("id", "post_like_#{post.post_id}").off("click").off("click").on "click", @submitPostVote
+					$(".notfound").css("display", "none")
 					Comments.pagePost(@post_id)
 				else
-					$(".post-full").html("<h1>Not found</h1>")
+					$(".notfound").css("display", "block")
+					$(".post-full").css("display", "none")
 				@pageLoaded()
 				Comments.checkCert()
 
@@ -200,12 +205,12 @@ class ZeroBlog extends ZeroFrame
 						elem = $(".post.template").clone().removeClass("template").attr("id", "post_#{post.post_id}")
 						elem.prependTo(".posts")
 						# elem.find(".score").attr("id", "post_score_#{post.post_id}").on "click", @submitPostVote # Submit vote
-						elem.find(".like").attr("id", "post_like_#{post.post_id}").on "click", @submitPostVote
+						elem.find(".like").attr("id", "post_like_#{post.post_id}").off("click").on "click", @submitPostVote
 					@applyPostdata(elem, post)
 				@pageLoaded()
 				@log "Posts loaded in", ((+ new Date)-s),"ms"
 
-				$(".posts .new").on "click", => # Create new blog post
+				$(".posts .new").off("click").on "click", => # Create new blog post
 					@cmd "fileGet", ["data/data.json"], (res) =>
 						data = JSON.parse(res)
 						# Add to data
@@ -265,10 +270,22 @@ class ZeroBlog extends ZeroFrame
 				elem.data("editor", editor)
 		@logEnd "Adding inline editors"
 
+	addImageZoom: (parent) ->
+		$("img", parent).each (i, img_elem) =>
+			img_elem.onload = =>
+				img_elem = $(img_elem)
+				size = img_elem.attr("alt")?.match("([0-9]+)x([0-9]+)")
+				if not size
+					return
+				if img_elem.width() < parseInt(size[1]) or img_elem.height() < parseInt(size[2])
+					img_elem.attr("data-action", "zoom")
+				img_elem.onload = null
+			if img_elem.complete
+				img_elem.onload()
 
 	# Check if publishing is necessary
 	checkPublishbar: ->
-		if not @data["modified"] or @data["modified"] > @site_info.content.modified
+		if @data? and (not @data["modified"] or @data["modified"] > @site_info.content.modified)
 			$(".publishbar").addClass("visible")
 		else
 			$(".publishbar").removeClass("visible")
@@ -296,6 +313,7 @@ class ZeroBlog extends ZeroFrame
 		$(".title .editable", elem).html(post.title).attr("href", "?Post:#{post.post_id}:#{title_hash}").data("content", post.title)
 		date_published = Time.since(post.date_published)
 		# Published date
+		post.body = post.body.replace(/^\* \* \*/m, "---")
 		if post.body.match /^---/m # Has more over fold
 			date_published += " &middot; #{Time.readtime(post.body)}" # If has break add readtime
 			$(".more", elem).css("display", "inline-block").attr("href", "?Post:#{post.post_id}:#{title_hash}")
@@ -303,7 +321,10 @@ class ZeroBlog extends ZeroFrame
 		# Comments num
 		if post.comments > 0
 			$(".details .comments-num", elem).css("display", "inline").attr("href", "?Post:#{post.post_id}:#{title_hash}#Comments")
-			$(".details .comments-num .num", elem).text("#{post.comments} comments")
+			if post.comments > 1
+				$(".details .comments-num .num", elem).text("#{post.comments} comments")
+			else
+				$(".details .comments-num .num", elem).text("#{post.comments} comment")
 		else
 			$(".details .comments-num", elem).css("display", "none")
 
@@ -339,7 +360,7 @@ class ZeroBlog extends ZeroFrame
 
 		if $(".body", elem).data("content") != post.body
 			$(".body", elem).html(Text.renderMarked(body)).data("content", post.body)
-
+			@addImageZoom(elem)
 
 	# Wrapper websocket connection ready
 	onOpenWebsocket: (e) =>
@@ -388,7 +409,7 @@ class ZeroBlog extends ZeroFrame
 	# Save content to data.json
 	saveContent: (elem, content, cb=false) =>
 		if elem.data("deletable") and content == null then return @deleteObject(elem, cb) # Its a delete request
-		elem.data("content", content)
+		if elem.data('editableMode') == "timestamp"  then elem.data("content", Time.timestamp(content)) else elem.data("content", content)
 		[type, id] = @getObject(elem).data("object").split(":")
 		id = parseInt(id)
 		if type == "Post" or type == "Site"
@@ -414,6 +435,7 @@ class ZeroBlog extends ZeroFrame
 			@writeData data, (res) =>
 				if cb
 					if res == true # OK
+						@cleanupImages()
 						if elem.data("editable-mode") == "simple" # No markdown
 							cb(content)
 						else if elem.data("editable-mode") == "timestamp" # Format timestamp
@@ -490,6 +512,7 @@ class ZeroBlog extends ZeroFrame
 		# Updating title in content.json
 		@cmd "fileGet", ["content.json"], (content) =>
 			content = content.replace /"title": ".*?"/, "\"title\": \"#{data.title}\"" # Load as raw html to prevent js bignumber problems
+			content = unescape(encodeURIComponent(content))
 			@cmd "fileWrite", ["content.json", btoa(content)], (res) =>
 				if res != "ok"
 					@cmd "wrapperNotification", ["error", "Content.json write error: #{res}"]
@@ -551,6 +574,18 @@ class ZeroBlog extends ZeroFrame
 
 		return false
 
+	# Delete non-referenced images
+	cleanupImages: ->
+		@cmd "fileGet", ["data/data.json"], (data) =>
+			Page.cmd "fileList", "data/img", (files) =>
+				for file in files
+					if file.indexOf("post_") != 0
+						continue
+					if data.indexOf(file) == -1
+						@log "Deleting image", file, "..."
+						@cmd "fileDelete", "data/img/#{file}"
+
+
 	# Parse incoming requests
 	onRequest: (cmd, message) ->
 		if cmd == "setSiteInfo" # Site updated
@@ -583,6 +618,14 @@ class ZeroBlog extends ZeroFrame
 			@loadData()
 			if $("body").hasClass("page-main") then @pageMain()
 			if $("body").hasClass("page-post") then @pagePost()
+		else if site_info.event?[0] == "cert_changed" and site_info.cert_user_id
+			# Auto click follow username mentions on cert change
+			@initFollowButton()
+			mentions_menu_elem = @follow.feeds["Username mentions"][1]
+			setTimeout ( =>
+				if not mentions_menu_elem.hasClass("selected")
+					mentions_menu_elem.trigger("click")
+			), 100
 
 
 window.Page = new ZeroBlog()

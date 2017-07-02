@@ -4,7 +4,7 @@ class InlineEditor
 		@edit_button.on "click", @startEdit
 		@elem.addClass("editable").before(@edit_button)
 		@editor = null
-		@elem.on "mouseenter", (e) =>
+		@elem.on "mouseenter click", (e) =>
 			@edit_button.css("opacity", "0.4")
 			# Keep in display
 			scrolltop = $(window).scrollTop()
@@ -22,26 +22,31 @@ class InlineEditor
 	startEdit: =>
 		@content_before = @elem.html() # Save current to restore on cancel
 
-		@editor = $("<textarea class='editor'></textarea>")
-		@editor.css("outline", "10000px solid rgba(255,255,255,0)").cssLater("transition", "outline 0.3s", 5).cssLater("outline", "10000px solid rgba(255,255,255,0.9)", 10) # Animate other elements fadeout
-		@editor.val @getContent(@elem, "raw")
-		@elem.after(@editor)
+		if @elem.data("editable-mode") == "meditor"
+			@editor = new Meditor(@elem[0], @getContent(@elem, "raw"))
+			@editor.handleImageSave = @handleImageSave
+			@editor.load()
+		else
+			@editor = $("<textarea class='editor'></textarea>")
+			@editor.val @getContent(@elem, "raw")
+			@elem.after(@editor)
 
-		@elem.html [1..50].join("fill the width") # To make sure we span the editor as far as we can
-		@copyStyle(@elem, @editor) # Copy elem style to editor
-		@elem.html @content_before # Restore content
+			@elem.html [1..50].join("fill the width") # To make sure we span the editor as far as we can
+			@copyStyle(@elem, @editor) # Copy elem style to editor
+			@elem.html @content_before # Restore content
 
-		
-		@autoExpand(@editor) # Set editor to autoexpand
-		@elem.css("display", "none") # Hide elem
 
-		if $(window).scrollTop() == 0 # Focus textfield if scroll on top
-			@editor[0].selectionEnd = 0
-			@editor.focus()
+			@autoExpand(@editor) # Set editor to autoexpand
+			@elem.css("display", "none") # Hide elem
 
+			if $(window).scrollTop() == 0 # Focus textfield if scroll on top
+				@editor[0].selectionEnd = 0
+				@editor.focus()
+
+		$(".editbg").css("display", "block").cssLater("opacity", 0.9, 10)
 		$(".editable-edit").css("display", "none") # Hide all edit button until its not finished
 
-		$(".editbar").css("display", "inline-block").addClassLater("visible", 10) 
+		$(".editbar").css("display", "inline-block").addClassLater("visible", 10)
 		$(".publishbar").css("opacity", 0) # Hide publishbar
 		$(".editbar .object").text @getObject(@elem).data("object")+"."+@elem.data("editable")
 		$(".editbar .button").removeClass("loading")
@@ -58,14 +63,22 @@ class InlineEditor
 
 		window.onbeforeunload = ->
 			return 'Your unsaved blog changes will be lost!'
-		
+
 		return false
 
+	handleImageSave: (name, image_base64uri, el) =>
+		el.style.opacity = 0.5
+		object_name = @getObject(@elem).data("object").replace(/[^A-Za-z0-9]/g, "_").toLowerCase()
+		file_path = "data/img/#{object_name}_#{name}"
+		Page.cmd "fileWrite", [file_path, image_base64uri.replace(/.*,/, "")], =>
+			el.style.opacity = 1
+			el.src = file_path
 
 	stopEdit: =>
 		@editor.remove()
 		@editor = null
-		@elem.css("display", "")
+		@elem.css("display", "").css("z-index", 999).css("position", "relative").cssLater("z-index", "").cssLater("position", "")
+		$(".editbg").css("opacity", 0).cssLater("display", "none")
 
 		$(".editable-edit").css("display", "") # Show edit buttons
 
@@ -87,6 +100,8 @@ class InlineEditor
 
 				$('pre code').each (i, block) -> # Higlight code blocks
 					hljs.highlightBlock(block)
+
+				Page.addImageZoom(@elem)
 			else
 				$(".editbar .save").removeClass("loading")
 
@@ -95,7 +110,7 @@ class InlineEditor
 
 	deleteObject: =>
 		object_type = @getObject(@elem).data("object").split(":")[0]
-		Page.cmd "wrapperConfirm", ["Are you sure you sure to delete this #{object_type}?", "Delete"], (confirmed) => 
+		Page.cmd "wrapperConfirm", ["Are you sure you sure to delete this #{object_type}?", "Delete"], (confirmed) =>
 			$(".editbar .delete").addClass("loading")
 			Page.saveContent @getObject(@elem), null, =>
 				@stopEdit()
@@ -108,6 +123,8 @@ class InlineEditor
 
 		$('pre code').each (i, block) -> # Higlight code blocks
 			hljs.highlightBlock(block)
+
+		Page.cleanupImages()
 
 		return false
 
@@ -153,7 +170,7 @@ class InlineEditor
 				s = this.selectionStart
 				val = elem.val()
 				elem.val(val.substring(0,this.selectionStart) + "\t" + val.substring(this.selectionEnd))
-				this.selectionEnd = s+1; 
+				this.selectionEnd = s+1;
 
- 
+
 window.InlineEditor = InlineEditor

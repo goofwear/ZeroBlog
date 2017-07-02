@@ -2,13 +2,13 @@ class Comments extends Class
 	pagePost: (post_id, cb=false) ->
 		@post_id = post_id
 		@rules = {}
-		$(".button-submit-comment").on "click", =>
+		$(".button-submit-comment").off("click").on "click", =>
 			@submitComment()
 			return false
 		@loadComments("noanim", cb)
 		@autoExpand $(".comment-textarea")
 
-		$(".certselect").on "click", =>
+		$(".certselect").off("click").on "click", =>
 			if Page.server_info.rev < 160
 				Page.cmd "wrapperNotification", ["error", "Comments requires at least ZeroNet 0.3.0 Please upgade!"]
 			else
@@ -26,7 +26,7 @@ class Comments extends Class
 			WHERE post_id = #{@post_id} ORDER BY date_added DESC"
 
 		Page.cmd "dbQuery", query, (comments) =>
-			$(".comments-num").text(comments.length)
+			$("#Comments").text(comments.length + if comments.length > 1 then " Comments:" else " Comment:")
 			for comment in comments
 				user_address = comment.directory.replace("users/", "")
 				comment_address = "#{comment.comment_id}_#{user_address}"
@@ -35,7 +35,7 @@ class Comments extends Class
 					elem = $(".comment.template").clone().removeClass("template").attr("id", "comment_"+comment_address).data("post_id", @post_id)
 					if type != "noanim"
 						elem.cssSlideDown()
-					$(".reply", elem).on "click", (e) => # Reply link
+					$(".reply", elem).off("click").on "click", (e) => # Reply link
 						return @buttonReply $(e.target).parents(".comment")
 				@applyCommentData(elem, comment)
 				elem.appendTo(".comments")
@@ -145,7 +145,7 @@ class Comments extends Class
 		# Autoexpand
 		if elem.height() > 0 then elem.height(1)
 
-		elem.on "input", =>
+		elem.off("input").on "input", =>
 			if editor.scrollHeight > elem.height()
 				old_height = elem.height()
 				elem.height(1)
